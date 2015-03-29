@@ -4,13 +4,11 @@
 #include <graphviz/cgraph.h>
 #include "grafo.h"
 
-//struct vert;
-
 typedef struct vertice {
-    char nome[32];
-    int n;
-    struct vertice *vizinhos;
-    double *pesos;
+  struct vertice *vizinho; // lista ligada de vizinhos
+  double *peso; // vetor de pesos de tamanho n
+  char *nome;
+  int n;
 } vertice;
 
 // estrutura de dados para representar um grafo simples
@@ -22,11 +20,58 @@ typedef struct vertice {
 // os nomes do grafo e dos vértices são strings quaisquer
 // num grafo com pesos nas arestas todas as arestas tem peso, que é um double
 // o peso default de uma aresta é 0.0
-
 struct grafo {
-    char *nome;
-    vertice *nos;
+  int direcionado;
+  char *nome;
+  vertice *nos;
 };
+
+vertice *cria_vertice(Agedge_t *a);
+vertice *insere_vertice(vertice *g, vertice *v);
+
+
+static Agedge_t **arestas;
+static int busca_aresta(Agedge_t *a, int n_arestas_visitadas){
+  for ( int i=0; i < n_arestas_visitadas; ++i)
+    if ( ageqedge(a, arestas[i]) )
+      return 1;
+
+  return 0;
+}
+
+vertice *cria_vertice(Agedge_t *a) {
+  vertice *v = (vertice *) malloc(sizeof(vertice));
+  v->vizinho = NULL;
+  v->nome = (char *) malloc(sizeof(char)*32);
+  strcpy(v->nome, (char *) agnameof(agtail(a)));
+
+  char *peso = agget(a, (char *)"peso");
+  if ( peso && *peso ) {
+    v->peso = (double *) malloc(sizeof(double));
+    v->peso[0] = atof(agget(a, (char *)"peso"));
+    if (v->peso == NULL)
+      v->n = 0;
+    else
+      v->n = 1;
+  }
+  else {
+    v->peso = NULL;
+    v->n = 0;
+  }
+
+  return v;
+}
+
+vertice *insere_vertice(vertice *g, vertice *v) {
+  if (g->vizinho == NULL) {
+    g->vizinho = v;
+  }
+  else {
+    insere_vertice(g->vizinho, v);
+  }
+
+  return v;
+}
 
 // lê um grafo no formato dot de input, usando as rotinas de libcgraph
 // desconsidera todos os atributos do grafo lido
@@ -34,42 +79,67 @@ struct grafo {
 // num grafo com pesos nas arestas todas as arestas tem peso, que é um double
 // o peso default de uma aresta num grafo com pesos é 0.0
 // devolve o grafo lido ou
-//         NULL em caso de erro
+//     NULL em caso de erro
 // TODO tratamento de erro
 grafo le_grafo(FILE *input) {
-    Agraph_t *g = agread(input, NULL);
-    if ( !g )
-        return NULL;
+  Agraph_t *g = agread(input, NULL);
+  if ( !g )
+    return NULL;
 
-    grafo grf = malloc(sizeof(grafo));
+  // Cria grafo
+  grafo grf = malloc(sizeof(grafo));
+  grf->direcionado = agisdirected(g);
+  grf->nos = NULL;
 
-    // Cria vetor de vértices
-    int n_vertices = agnnodes(g);
-    grf->nos = (vertice*)
-        malloc((sizeof(vertice)*(long unsigned int)n_vertices));
+  // Cria vetor de vértices
+  int n_vertices = agnnodes(g);
+  grf->nos = (vertice*)
+    malloc((sizeof(vertice)*(long unsigned int)n_vertices));
 
-    vertice *vrtc = grf->nos;
 
-    for (Agnode_t *v=agfstnode(g); v; v=agnxtnode(g,v)) {
-        strcpy( vrtc->nome, agnameof(v) );
-        //printf("%s\n", vrtc->nome);
-        vrtc++;
+  // Percorre vértices para encontrar as arestas ou arcos relacionados
+  vertice *vrtc = grf->nos;
+  for (Agnode_t *v=agfstnode(g); v; v=agnxtnode(g,v)) {
+    vrtc->nome = (char *) malloc(sizeof(char)*32);
+    strcpy( vrtc->nome, agnameof(v) );
+    vrtc->n = 0;
+
+    if (grf->direcionado) {
+      // Guarda arcos
+      for (Agedge_t *a=agfstout(g,v); a; a=agnxtout(g,a)) {
+        vertice *aux = cria_vertice(a);
+        insere_vertice(grf->nos, aux);
+      }
     }
+    else {
+      // Guarda arestas
+      for (Agedge_t *a=agfstedge(g,v); a; a=agnxtedge(g,a,v)) {
+        // A comparação comentada a seguir retira a redundância do
+        // armazenamento.
+        //if (!strcmp(vrtc->nome, agnameof(agtail(a))))
 
-    for (int i=0; i<n_vertices; i++) {
-        printf("%s\n", grf->nos[i].nome);
+        // Inserção de vértice
+        vertice *aux = cria_vertice(a);
+        insere_vertice(grf->nos, aux);
+      }
+
+      vrtc++;
     }
+  }
 
+  //for (int i=0; i<n_vertices; i++) {
+  //  printf("%s\n", grf->nos[i].nome);
+  //}
 
-    // Cria listas de arestas
-    int n_arestas = agnedges(g);
+  // Cria listas de arestas
+  int n_arestas = agnedges(g);
 
-    return grf;
+  return grf;
 }
 
 // desaloca toda a memória utilizada em g
 // devolve 1 em caso de sucesso ou
-//         0 em caso de erro
+//     0 em caso de erro
 
 int destroi_grafo(grafo g) {
 
@@ -79,7 +149,7 @@ int destroi_grafo(grafo g) {
 // 1. todos os vértices são escritos antes de todas as arestas/arcos
 // 2. se uma aresta tem peso, este deve ser escrito como um atributo
 // devolve o grafo escrito ou
-//         NULL em caso de erro
+//     NULL em caso de erro
 
 grafo escreve_grafo(FILE *output, grafo g) {
 

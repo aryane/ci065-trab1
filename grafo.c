@@ -24,11 +24,12 @@ struct grafo {
   int direcionado;
   char *nome;
   vertice *nos;
+  int n;
 };
 
 vertice *cria_vertice(Agedge_t *a);
 vertice *insere_vertice(vertice *g, vertice *v);
-
+int destroi_lista(vertice *v);
 
 static Agedge_t **arestas;
 static int busca_aresta(Agedge_t *a, int n_arestas_visitadas){
@@ -43,12 +44,13 @@ vertice *cria_vertice(Agedge_t *a) {
   vertice *v = (vertice *) malloc(sizeof(vertice));
   v->vizinho = NULL;
   v->nome = (char *) malloc(sizeof(char)*32);
-  strcpy(v->nome, (char *) agnameof(agtail(a)));
+  strcpy(v->nome, (char *) agnameof(aghead(a)));
 
   char *peso = agget(a, (char *)"peso");
   if ( peso && *peso ) {
     v->peso = (double *) malloc(sizeof(double));
-    v->peso[0] = atof(agget(a, (char *)"peso"));
+    v->peso[0] = atof(peso);
+    printf("peso %f\n", v->peso);
     if (v->peso == NULL)
       v->n = 0;
     else
@@ -83,19 +85,20 @@ vertice *insere_vertice(vertice *g, vertice *v) {
 // TODO tratamento de erro
 grafo le_grafo(FILE *input) {
   Agraph_t *g = agread(input, NULL);
-  if ( !g )
+  if ( ! (g && agisstrict(g)) )
     return NULL;
 
   // Cria grafo
-  grafo grf = malloc(sizeof(grafo));
-  grf->direcionado = agisdirected(g);
+  grafo grf = (grafo) malloc(sizeof(struct grafo));
+  grf->nome = (char *) malloc(sizeof(char)*32);
+  strcpy(grf->nome, agnameof(g));
   grf->nos = NULL;
+  grf->direcionado = agisdirected(g);
+  grf->n = agnnodes(g);
 
   // Cria vetor de vértices
-  int n_vertices = agnnodes(g);
   grf->nos = (vertice*)
-    malloc((sizeof(vertice)*(long unsigned int)n_vertices));
-
+    malloc((sizeof(vertice)*(long unsigned int)grf->n));
 
   // Percorre vértices para encontrar as arestas ou arcos relacionados
   vertice *vrtc = grf->nos;
@@ -104,35 +107,21 @@ grafo le_grafo(FILE *input) {
     strcpy( vrtc->nome, agnameof(v) );
     vrtc->n = 0;
 
-    if (grf->direcionado) {
-      // Guarda arcos
-      for (Agedge_t *a=agfstout(g,v); a; a=agnxtout(g,a)) {
-        vertice *aux = cria_vertice(a);
-        insere_vertice(grf->nos, aux);
-      }
-    }
-    else {
-      // Guarda arestas
-      for (Agedge_t *a=agfstedge(g,v); a; a=agnxtedge(g,a,v)) {
-        // A comparação comentada a seguir retira a redundância do
-        // armazenamento.
-        //if (!strcmp(vrtc->nome, agnameof(agtail(a))))
+    Agedge_t *a = (grf->direcionado) ? agfstout(g,v) : agfstedge(g,v);
 
+    while (a) {
+      if (!strcmp(vrtc->nome, agnameof(agtail(a)))) {
         // Inserção de vértice
         vertice *aux = cria_vertice(a);
-        insere_vertice(grf->nos, aux);
+        printf("v %s -- aresta %s\n", vrtc->nome, aux->nome);
+        insere_vertice(vrtc, aux);
       }
 
-      vrtc++;
+      a = (grf->direcionado) ? agnxtout(g,a) : agnxtedge(g,a, vrtc);
     }
+
+    vrtc++;
   }
-
-  //for (int i=0; i<n_vertices; i++) {
-  //  printf("%s\n", grf->nos[i].nome);
-  //}
-
-  // Cria listas de arestas
-  int n_arestas = agnedges(g);
 
   return grf;
 }
@@ -142,7 +131,6 @@ grafo le_grafo(FILE *input) {
 //     0 em caso de erro
 
 int destroi_grafo(grafo g) {
-
 }
 
 // escreve o grafo g em output usando o formato dot, de forma que
@@ -152,5 +140,7 @@ int destroi_grafo(grafo g) {
 //     NULL em caso de erro
 
 grafo escreve_grafo(FILE *output, grafo g) {
-
+  for (int i=0; i<g->n; i++) {
+    fprintf(output, "%s\n", g->nos[i].nome);
+  }
 }
